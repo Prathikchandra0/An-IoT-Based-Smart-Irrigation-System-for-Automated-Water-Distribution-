@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Irrigation Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f12;
+      --surface:   #161a1f;
+      --surface2:  #1e2228;
+      --border:    #2e3340;
+      --green:     #10b981;
+      --green-dim: #064e3b;
+      --white:     #f1f5f9;
+      --white-dim: #334155;
+      --amber:     #f59e0b;
+      --red:       #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --accent:    #6ee7b7;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* animated mesh background */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(16,185,129,0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(241,245,249,0.04) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,15,18,0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-left { display: flex; align-items: center; gap: 0.75rem; }
+    .header-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg,#064e3b,#065f46);
+      display: grid; place-items: center; font-size: 1.2rem;
+    }
+    header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.2px; }
+    header h1 span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 0.75rem; }
+    .live-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25);
+      padding: 4px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 500;
+      color: var(--accent);
+    }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+
+    /* ── Layout ───────────────────────────────────────────────── */
+    main { max-width: 1160px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 1; }
+
+    /* ── Loading ──────────────────────────────────────────────── */
+    #loading {
+      min-height: 60vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 1rem;
+      color: var(--muted); font-size: 0.95rem;
+    }
+    .spinner {
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 3px solid #2e3340;
+      border-top-color: var(--green);
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Pump Hero ────────────────────────────────────────────── */
+    #pump-hero {
+      border-radius: 20px;
+      padding: 1.6rem 2rem;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+      margin-bottom: 1.8rem;
+      border: 1px solid;
+      transition: all 0.6s cubic-bezier(.4,0,.2,1);
+      position: relative; overflow: hidden;
+    }
+    #pump-hero::before {
+      content: ''; position: absolute; inset: 0;
+      opacity: 0.06; pointer-events: none;
+      background: repeating-linear-gradient(45deg,#fff 0px,#fff 1px,transparent 1px,transparent 12px);
+    }
+    #pump-hero.on  { background: linear-gradient(135deg,#052e16,#064e3b); border-color: #166534; }
+    #pump-hero.off { background: linear-gradient(135deg,#1a1c20,#22262e); border-color: #3f4451; }
+
+    .pump-left { display: flex; align-items: center; gap: 1.2rem; }
+    .pump-icon-wrap {
+      width: 60px; height: 60px; border-radius: 16px;
+      display: grid; place-items: center; font-size: 1.8rem;
+      transition: background 0.5s;
+    }
+    .on  .pump-icon-wrap { background: rgba(16,185,129,0.2); box-shadow: 0 0 20px rgba(16,185,129,0.2); }
+    .off .pump-icon-wrap { background: rgba(241,245,249,0.1); }
+    .pump-meta { line-height: 1.3; }
+    .pump-meta small { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .pump-meta .pump-state {
+      font-size: 1.7rem; font-weight: 800; letter-spacing: -1px;
+      transition: color 0.5s;
+    }
+    .on  .pump-state { color: var(--accent); }
+    .off .pump-state { color: #f1f5f9; }
+
+    .pump-right { text-align: right; }
+    .pump-right small { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    #pump-reason-short {
+      font-size: 0.85rem; color: #cbd5e1; max-width: 340px;
+      margin-top: 4px; line-height: 1.5;
+    }
+
+    /* ── KPI grid ─────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.2rem;
+      margin-bottom: 1.8rem;
+    }
+
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 1.4rem 1.6rem;
+      position: relative; overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: default;
+    }
+    .kpi:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
+    .kpi::after {
+      content: ''; position: absolute; top: 0; left: 0;
+      right: 0; height: 2px; border-radius: 18px 18px 0 0;
+      transition: background 0.5s;
+    }
+    .kpi.moisture::after { background: linear-gradient(90deg,var(--green),var(--accent)); }
+    .kpi.temp::after     { background: linear-gradient(90deg,#f97316,#fbbf24); }
+    .kpi.humidity::after { background: linear-gradient(90deg,#cbd5e1,#f1f5f9); }
+    .kpi.weather::after  { background: linear-gradient(90deg,#cbd5e1,#f1f5f9); }
+
+    .kpi-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; }
+    .kpi-label  { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .kpi-badge  {
+      font-size: 1.35rem; width: 42px; height: 42px;
+      border-radius: 12px; display: grid; place-items: center;
+    }
+    .kpi.moisture .kpi-badge { background: rgba(16,185,129,0.12); }
+    .kpi.temp     .kpi-badge { background: rgba(249,115,22,0.12); }
+    .kpi.humidity .kpi-badge { background: rgba(241,245,249,0.1); }
+    .kpi.weather  .kpi-badge { background: rgba(14,165,233,0.12); }
+
+    .kpi-value { font-size: 2.4rem; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+    .kpi-unit  { font-size: 1rem; font-weight: 500; color: var(--muted); margin-left: 3px; }
+    .kpi-sub   { font-size: 0.78rem; color: var(--muted); margin-top: 0.5rem; }
+
+    /* moisture progress ring */
+    .ring-wrap { margin-top: 1rem; position: relative; }
+    .ring-track { background: var(--surface2); border-radius: 8px; height: 8px; overflow: hidden; }
+    .ring-bar   {
+      height: 100%; border-radius: 8px;
+      transition: width 1s cubic-bezier(.4,0,.2,1), background 0.5s;
+    }
+    .ring-labels { display: flex; justify-content: space-between;
+                   font-size: 0.68rem; color: var(--muted); margin-top: 4px; }
+
+    /* ── Chart section ────────────────────────────────────────── */
+    .section-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.2rem;
+      margin-bottom: 1.8rem;
+    }
+    @media (max-width: 768px) { .section-row { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 1.4rem 1.6rem;
+    }
+    .panel-title {
+      font-size: 0.75rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1.2px;
+      margin-bottom: 1rem; display: flex; align-items: center; gap: 6px;
+    }
+    .panel-title::before {
+      content: ''; display: inline-block; width: 3px; height: 14px;
+      border-radius: 2px; background: var(--accent);
+    }
+
+    .chart-wrap { position: relative; height: 180px; }
+
+    /* ── Decision log ─────────────────────────────────────────── */
+    .decision-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 220px; overflow-y: auto; }
+    .decision-list::-webkit-scrollbar { width: 4px; }
+    .decision-list::-webkit-scrollbar-track { background: transparent; }
+    .decision-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .decision-item {
+      background: var(--surface2);
+      border-radius: 10px; padding: 0.7rem 1rem;
+      border-left: 3px solid;
+      font-size: 0.8rem;
+    }
+    .decision-item.ON  { border-color: var(--green); }
+    .decision-item.OFF { border-color: #cbd5e1; }
+    .decision-item.MAINTAIN { border-color: var(--amber); }
+    .decision-item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+    .decision-tag {
+      font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; letter-spacing: 0.5px;
+    }
+    .ON   .decision-tag { background: rgba(16,185,129,0.15); color: var(--accent); }
+    .OFF  .decision-tag { background: rgba(241,245,249,0.12); color: #f1f5f9; }
+    .MAINTAIN .decision-tag { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .decision-time { font-size: 0.68rem; color: var(--muted); }
+    .decision-reason-text { color: #94a3b8; line-height: 1.4; }
+
+    /* ── History table ────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      background: var(--surface2); padding: 0.8rem 1.1rem;
+      text-align: left; color: var(--muted);
+      font-weight: 600; font-size: 0.7rem;
+      text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    thead th:first-child { border-radius: 14px 0 0 0; }
+    thead th:last-child  { border-radius: 0 14px 0 0; }
+    tbody tr { border-top: 1px solid rgba(30,58,95,0.5); transition: background 0.15s; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 0.7rem 1.1rem; color: #cbd5e1; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 8px;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px;
+    }
+    .badge-on  { background: rgba(16,185,129,0.15);  color: var(--accent); }
+    .badge-off { background: rgba(241,245,249,0.1);  color: #f1f5f9; }
+    .badge::before { content:''; width:6px;height:6px;border-radius:50%; }
+    .badge-on::before  { background: var(--green); }
+    .badge-off::before { background: #e2e8f0; }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    footer {
+      text-align: center; padding: 2rem 1rem;
+      color: var(--muted); font-size: 0.75rem;
+      border-top: 1px solid var(--border); margin-top: 1rem;
+    }
+    footer span { color: var(--accent); }
+
+    /* ══════════════════════════════════════════
+       AGRICULTURE ANIMATIONS
+    ══════════════════════════════════════════ */
+
+    /* 1. Floating leaves / seeds */
+    .leaf {
+      position: fixed; top: -80px; pointer-events: none;
+      z-index: 0; user-select: none;
+      animation: leafDrift linear infinite;
+      opacity: 0; font-size: 1.1rem;
+    }
+    @keyframes leafDrift {
+      0%   { transform: translateY(0) translateX(0) rotate(0deg);   opacity: 0; }
+      8%   { opacity: 0.7; }
+      92%  { opacity: 0.5; }
+      100% { transform: translateY(110vh) translateX(60px) rotate(400deg); opacity: 0; }
+    }
+
+    /* 2. Water drops when pump ON */
+    .water-drops { position:absolute; inset:0; pointer-events:none; overflow:hidden; border-radius:20px; }
+    .wdrop {
+      position: absolute; width: 3px; border-radius: 2px;
+      background: linear-gradient(180deg,rgba(110,231,183,0.9),rgba(16,185,129,0.2));
+      animation: dropFall linear infinite; opacity: 0;
+    }
+    @keyframes dropFall {
+      0%   { top:-5%; height:6px; opacity:0; }
+      10%  { opacity:1; }
+      85%  { opacity:0.7; }
+      100% { top:108%; height:18px; opacity:0; }
+    }
+
+    /* 3. Pump ripple rings */
+    .pump-ripples { position:absolute; inset:0; pointer-events:none; overflow:hidden; border-radius:20px; }
+    .rring {
+      position:absolute; border-radius:50%;
+      border:1.5px solid rgba(110,231,183,0.4);
+      animation: rippleOut 3s ease-out infinite; opacity:0;
+    }
+    @keyframes rippleOut {
+      0%   { width:30px; height:30px; left:3rem; top:50%; margin-top:-15px; opacity:0.9; }
+      100% { width:400px; height:400px; left:3rem; top:50%; margin-top:-200px; margin-left:-185px; opacity:0; }
+    }
+    .rring:nth-child(2) { animation-delay:1s; }
+    .rring:nth-child(3) { animation-delay:2s; }
+    .pump-ripples.hidden { display:none; }
+
+    /* 4. Sprouting plant in moisture card */
+    .sprout {
+      position:absolute; bottom:1.2rem; right:1.2rem;
+      width:44px; height:52px; pointer-events:none;
+    }
+    .st-stem {
+      position:absolute; bottom:0; left:50%;
+      width:3px; background:linear-gradient(0deg,#065f46,#10b981);
+      border-radius:2px; transform:translateX(-50%);
+      animation: growUp 1.8s ease-out forwards;
+      height:0; transform-origin:bottom;
+    }
+    @keyframes growUp { to { height:38px; } }
+    .st-ll {
+      position:absolute; bottom:18px; right:22px;
+      width:14px; height:9px;
+      background:var(--green); border-radius:50% 0;
+      transform:rotate(-40deg); transform-origin:right bottom;
+      animation:popLeaf 0.35s ease-out 1s forwards; opacity:0; scale:0;
+    }
+    .st-lr {
+      position:absolute; bottom:26px; left:22px;
+      width:14px; height:9px;
+      background:#34d399; border-radius:50% 0;
+      transform:rotate(40deg) scaleX(-1); transform-origin:left bottom;
+      animation:popLeaf 0.35s ease-out 1.4s forwards; opacity:0; scale:0;
+    }
+    @keyframes popLeaf {
+      0%  { opacity:0; scale:0; }
+      70% { scale:1.15; }
+      100%{ opacity:1; scale:1; }
+    }
+
+    /* 5. Sun rays on weather card */
+    .sun-wrap {
+      position:absolute; top:1rem; right:0.9rem;
+      width:46px; height:46px; pointer-events:none;
+    }
+    .sun-core {
+      position:absolute; inset:30%;
+      background:radial-gradient(circle,#fde68a,#f59e0b);
+      border-radius:50%;
+      box-shadow:0 0 10px rgba(245,158,11,0.5);
+    }
+    .sun-ray {
+      position:absolute; top:50%; left:50%;
+      width:2px; border-radius:1px;
+      background:rgba(251,191,36,0.55);
+      transform-origin:center;
+      animation:sunSpin 12s linear infinite;
+    }
+    @keyframes sunSpin { to { transform:rotate(360deg) translateY(-18px); } }
+
+    /* 6. Soil wave animation under moisture bar */
+    .soil-anim {
+      height:22px; overflow:hidden; margin-top:6px;
+      border-radius:6px; opacity:0.55;
+    }
+    .soil-anim svg { width:200%; height:100%; animation:soilWave 3.5s linear infinite; }
+    @keyframes soilWave { to { transform:translateX(-50%); } }
+
+    /* 7. Rain streaks when rain predicted */
+    .rain-wrap { position:absolute; inset:0; pointer-events:none; overflow:hidden; border-radius:18px; }
+    .rain-streak {
+      position:absolute; width:1.5px; border-radius:1px;
+      background:linear-gradient(180deg,rgba(200,220,255,0.0),rgba(200,220,255,0.7),rgba(200,220,255,0.0));
+      animation:rainFall linear infinite; opacity:0;
+    }
+    @keyframes rainFall {
+      0%  { top:-15%; height:14px; opacity:0; }
+      15% { opacity:0.8; }
+      85% { opacity:0.5; }
+      100%{ top:110%; height:22px; opacity:0; }
+    }
+    .rain-wrap.hidden { display:none; }
+
+    /* ══ 8. FULL-SCREEN CLIMATE OVERLAY ══════════════════════════ */
+    #climate-overlay {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    #climate-tint {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+      opacity: 0.08; transition: background 1.5s ease;
+    }
+    #climate-flash {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 2;
+      opacity: 0; background: rgba(255,255,200,0.22);
+      transition: opacity 0.06s;
+    }
+    /* Climate HUD – corner indicator */
+    #climate-hud {
+      position: fixed; bottom: 1.4rem; right: 1.5rem;
+      z-index: 50; pointer-events: none;
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(13,15,18,0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 30px; padding: 6px 14px 6px 10px;
+      animation: hudPop 0.4s cubic-bezier(.34,1.56,.64,1);
+    }
+    @keyframes hudPop { from{opacity:0;transform:scale(0.8) translateY(6px)} to{opacity:1;transform:none} }
+    #climate-hud-emoji { font-size: 1.4rem; line-height: 1; }
+    #climate-hud-name  { font-size: 0.72rem; font-weight: 700; color: #e2e8f0; }
+    #climate-hud-desc  { font-size: 0.62rem; color: #64748b; margin-top: 1px; }
+
+    /* Cloud elements – inside fixed overlay */
+    .cld {
+      position:absolute; border-radius:50px;
+      background:rgba(255,255,255,0.14);
+      filter:blur(14px);
+      animation:cloudDrift linear infinite;
+    }
+    @keyframes cloudDrift { 0%{transform:translateX(-20%)} 100%{transform:translateX(120vw)} }
+
+    /* Snow */
+    .snflk {
+      position:absolute; border-radius:50%;
+      background:#e0f2fe; pointer-events:none;
+      animation:snowFall linear infinite; opacity:0;
+    }
+    @keyframes snowFall {
+      0%  { top:-5%; opacity:0; transform:translateX(0) rotate(0deg); }
+      10% { opacity:0.9; }
+      90% { opacity:0.6; }
+      100%{ top:105%; opacity:0; transform:translateX(30px) rotate(360deg); }
+    }
+
+    /* Fog */
+    .fog-layer {
+      position:absolute; left:-20%; width:140%; pointer-events:none;
+      border-radius:50%; background:rgba(180,190,200,0.18);
+      filter:blur(18px);
+      animation:fogDrift linear infinite alternate;
+    }
+    @keyframes fogDrift { 0%{transform:translateX(0)} 100%{transform:translateX(6%)} }
+
+    /* Lightning bolt – inside fixed overlay */
+    .bolt {
+      position:fixed; font-size:4rem;
+      animation:boltFlash 0.7s ease-out forwards;
+      top:8%; z-index:4; pointer-events:none;
+    }
+    @keyframes boltFlash {
+      0%  { opacity:0; transform:scaleY(0.5); }
+      20% { opacity:1; transform:scaleY(1); }
+      60% { opacity:1; }
+      100%{ opacity:0; }
+    }
+
+    /* Wind streaks – full viewport width */
+    .wind-streak {
+      position:absolute; height:1.5px; border-radius:1px; width:200px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent);
+      animation:windBlow linear infinite;
+    }
+    @keyframes windBlow {
+      0%  { transform:translateX(-100%); opacity:0; }
+      20% { opacity:1; } 80% { opacity:0.6; }
+      100%{ transform:translateX(120%); opacity:0; }
+    }
+
+    /* Hail */
+    .hail {
+      position:absolute; border-radius:50%;
+      background:linear-gradient(135deg,#e0f2fe,#bae6fd);
+      animation:hailFall linear infinite; opacity:0;
+    }
+    @keyframes hailFall {
+      0%  { top:-5%; opacity:0; }
+      15% { opacity:1; }
+      90% { opacity:0.8; }
+      100%{ top:108%; opacity:0; }
+    }
+
+    /* ── Input Panel ──────────────────────────────────── */
+    .input-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px 28px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .input-panel::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--green), var(--accent), var(--amber));
+    }
+    .input-panel h3 {
+      font-size: 0.9rem; font-weight: 700;
+      color: var(--text); margin-bottom: 18px;
+      letter-spacing: 0.3px;
+    }
+    .input-row {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-end;
+    }
+    .input-group {
+      flex: 1; min-width: 160px;
+    }
+    .input-group label {
+      display: block;
+      font-size: 0.68rem; font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.6px;
+      margin-bottom: 7px;
+    }
+    .input-group input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 0.95rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-group input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
+    }
+    .input-group input::placeholder { color: var(--border); }
+    .send-btn {
+      background: linear-gradient(135deg, var(--green), var(--accent));
+      border: none; border-radius: 10px;
+      padding: 10px 26px;
+      color: #0d0f12; font-size: 0.9rem; font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+      white-space: nowrap;
+    }
+    .send-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16,185,129,0.3); }
+    .send-btn:active { transform: translateY(0); }
+    .send-status {
+      margin-top: 12px; font-size: 0.82rem; font-weight: 600;
+      min-height: 18px;
+    }
+    .send-status.ok  { color: var(--green); }
+    .send-status.err { color: var(--red); }
+    .clear-btn {
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      padding: 5px 14px;
+      color: var(--red);
+      font-size: 0.75rem; font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .clear-btn:hover { background: rgba(239,68,68,0.22); transform: translateY(-1px); }
+    .clear-btn:active { transform: translateY(0); }
+
+    /* Heatwave shimmer – full screen */
+    .heat-shimmer {
+      position:fixed; inset:0; pointer-events:none;
+      background:repeating-linear-gradient(
+        0deg,
+        transparent 0px, transparent 8px,
+        rgba(255,140,30,0.05) 8px, rgba(255,140,30,0.05) 9px
+      );
+      animation:heatRise 1.8s ease-in-out infinite alternate;
+    }
+    @keyframes heatRise { 0%{transform:translateY(0)} 100%{transform:translateY(-8px)} }
+  </style>
+</head>
+<body>
+
+<!-- Full-screen climate overlay (behind everything) -->
+<div id="climate-overlay"></div>
+<div id="climate-tint"></div>
+<div id="climate-flash"></div>
+<!-- Climate HUD corner badge -->
+<div id="climate-hud">
+  <span id="climate-hud-emoji">☀️</span>
+  <div>
+    <div id="climate-hud-name">Sunny</div>
+    <div id="climate-hud-desc">34°C · UV 9</div>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <div class="header-logo">🌿</div>
+    <h1>Smart <span>Irrigation</span> System</h1>
+  </div>
+  <div class="header-right">
+    <div class="live-pill"><div class="live-dot"></div>Live · 5 s</div>
+  </div>
+</header>
+
+<!-- Main -->
+<main>
+
+  <!-- ── Manual Sensor Input ── -->
+  <div class="input-panel">
+    <h3>📡 Enter Sensor Values</h3>
+    <div class="input-row">
+      <div class="input-group">
+        <label>🌱 Soil Moisture Raw (0 – 1023)</label>
+        <input type="number" id="inp_moisture" placeholder="e.g. 750" min="0" max="1023"/>
+      </div>
+      <div class="input-group">
+        <label>🌡️ Temperature (°C)</label>
+        <input type="number" id="inp_temp" placeholder="e.g. 29.5" step="0.1"/>
+      </div>
+      <div class="input-group">
+        <label>💧 Humidity (%)</label>
+        <input type="number" id="inp_humidity" placeholder="e.g. 62" min="0" max="100"/>
+      </div>
+      <button class="send-btn" onclick="sendSensorData()">⚡ Send to System</button>
+    </div>
+    <div class="send-status" id="send-status"></div>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Enter sensor values above to see live data…</p>
+  </div>
+
+  <!-- Dashboard (hidden until data arrives) -->
+  <div id="dashboard">
+
+    <!-- Pump Hero -->
+    <div id="pump-hero" class="off">
+      <!-- Ripple rings (shown when ON) -->
+      <div class="pump-ripples hidden" id="pump-ripples">
+        <div class="rring"></div><div class="rring"></div><div class="rring"></div>
+      </div>
+      <!-- Water drops (shown when ON) -->
+      <div class="water-drops" id="water-drops"></div>
+      <div class="pump-left">
+        <div class="pump-icon-wrap" id="pump-icon">💧</div>
+        <div class="pump-meta">
+          <small>Water Pump</small>
+          <div class="pump-state" id="pump-status-text">OFF</div>
+        </div>
+      </div>
+      <div class="pump-right">
+        <small>Last Decision Reason</small>
+        <div id="pump-reason-short">Waiting for first reading…</div>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+
+      <!-- Moisture -->
+      <div class="kpi moisture">
+        <!-- Sprouting plant -->
+        <div class="sprout" id="sprout">
+          <div class="st-stem"></div>
+          <div class="st-ll"></div>
+          <div class="st-lr"></div>
+        </div>
+        <div class="kpi-header">
+          <span class="kpi-label">Soil Moisture</span>
+          <span class="kpi-badge">🌱</span>
+        </div>
+        <div>
+          <span class="kpi-value" id="moisture-val">0</span>
+          <span class="kpi-unit">%</span>
+        </div>
+        <div class="kpi-sub" id="moisture-status">--</div>
+        <div class="ring-wrap">
+          <div class="ring-track"><div class="ring-bar" id="moisture-bar" style="width:0%"></div></div>
+          <div class="ring-labels"><span>0%</span><span>Threshold 40%</span><span>100%</span></div>
+        </div>
+        <!-- Soil wave -->
+        <div class="soil-anim">
+          <svg viewBox="0 0 400 22" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0,11 C50,2 100,20 150,11 C200,2 250,20 300,11 C350,2 400,20 400,11 L400,22 L0,22 Z" fill="#064e3b"/>
+            <path d="M0,14 C60,6 110,22 170,14 C230,6 280,22 340,14 C370,8 400,16 400,14 L400,22 L0,22 Z" fill="#065f46" opacity="0.6"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Temperature -->
+      <div class="kpi temp">
+        <div class="kpi-header">
+          <span class="kpi-label">Temperature</span>
+          <span class="kpi-badge">🌡️</span>
+        </div>
+        <div>
+          <span class="kpi-value" id="temp-val">0</span>
+          <span class="kpi-unit">°C</span>
+        </div>
+        <div class="kpi-sub" id="temp-feel">--</div>
+      </div>
+
+      <!-- Humidity -->
+      <div class="kpi humidity">
+        <div class="kpi-header">
+          <span class="kpi-label">Humidity</span>
+          <span class="kpi-badge">💧</span>
+        </div>
+        <div>
+          <span class="kpi-value" id="humidity-val">0</span>
+          <span class="kpi-unit">%</span>
+        </div>
+        <div class="kpi-sub" id="humidity-level">--</div>
+      </div>
+
+      <!-- Weather -->
+      <div class="kpi weather">
+        <!-- Rain streaks overlay -->
+        <div class="rain-wrap hidden" id="rain-wrap"></div>
+        <!-- Sun rays -->
+        <div class="sun-wrap" id="sun-wrap">
+          <div class="sun-core"></div>
+          <div class="sun-ray" style="transform:rotate(0deg)   translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(45deg)  translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(90deg)  translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(135deg) translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(180deg) translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(225deg) translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(270deg) translateY(-18px)"></div>
+          <div class="sun-ray" style="transform:rotate(315deg) translateY(-18px)"></div>
+        </div>
+        <div class="kpi-header">
+          <span class="kpi-label">Weather Forecast</span>
+          <span class="kpi-badge">🌤️</span>
+        </div>
+        <div class="kpi-value" id="weather-icon" style="font-size:2rem;">--</div>
+        <div class="kpi-sub" id="weather-desc" style="margin-top:6px;font-size:0.82rem;color:#cbd5e1;">--</div>
+        <div class="kpi-sub" id="weather-temp">--</div>
+      </div>
+
+    </div>
+
+    <!-- Chart + Decision log row -->
+    <div class="section-row">
+
+      <!-- Moisture history chart -->
+      <div class="panel">
+        <div class="panel-title">Moisture History</div>
+        <div class="chart-wrap">
+          <canvas id="moistureChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Decision log -->
+      <div class="panel">
+        <div class="panel-title">Recent Decisions</div>
+        <div class="decision-list" id="decision-list">
+          <div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:2rem 0;">No decisions yet</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- History table -->
+    <div class="panel" style="margin-bottom:1rem;">
+      <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;">
+        Sensor Log
+        <button class="clear-btn" onclick="clearHistory()">🗑️ Clear History</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Moisture %</th>
+              <th>Temp °C</th>
+              <th>Humidity %</th>
+              <th>Pump</th>
+            </tr>
+          </thead>
+          <tbody id="readings-tbody">
+            <tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted);">No data yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /#dashboard -->
+</main>
+
+<footer>Smart Irrigation System &mdash; IoT Prototype &copy; 2026 &nbsp;|&nbsp; Built with <span>♥</span> using Flask + SQLite</footer>
+
+<script>
+  // ── Send sensor data from browser ─────────────────────────────
+  async function sendSensorData() {
+    const m  = document.getElementById('inp_moisture').value.trim();
+    const t  = document.getElementById('inp_temp').value.trim();
+    const h  = document.getElementById('inp_humidity').value.trim();
+    const st = document.getElementById('send-status');
+
+    if (!m || !t || !h) {
+      st.textContent = '⚠️ Please fill in all three fields.';
+      st.className = 'send-status err';
+      return;
+    }
+    st.innerHTML = '<span style="opacity:.7">Sending…</span>';
+    st.className = 'send-status';
+
+    try {
+      const res  = await fetch('/sensor-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          soil_moisture_raw: parseFloat(m),
+          temperature:       parseFloat(t),
+          humidity:          parseFloat(h)
+        })
+      });
+      const json = await res.json();
+      if (res.ok) {
+        st.textContent = `✅ Pump: ${json.pump_command} — ${json.reason}`;
+        st.className = 'send-status ok';
+        document.getElementById('inp_moisture').value = '';
+        document.getElementById('inp_temp').value     = '';
+        document.getElementById('inp_humidity').value = '';
+        refreshDashboard();
+      } else {
+        st.textContent = `❌ ${json.error || 'Server error'}`;
+        st.className = 'send-status err';
+      }
+    } catch(e) {
+      st.textContent = `❌ Cannot reach server: ${e.message}`;
+      st.className = 'send-status err';
+    }
+  }
+
+  // Enter key submits
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') sendSensorData(); });
+
+  // ── Clear history ────────────────────────────────────────────────
+  async function clearHistory() {
+    if (!confirm('Clear all sensor readings and timestamps? This cannot be undone.')) return;
+    try {
+      const res = await fetch('/clear-history', { method: 'POST' });
+      if (res.ok) {
+        document.getElementById('readings-tbody').innerHTML =
+          '<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted);">No data yet</td></tr>';
+        document.getElementById('decision-list').innerHTML =
+          '<div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:2rem 0;">No decisions yet</div>';
+        document.getElementById('loading').style.display = 'block';
+        moistureChart.data.labels = [];
+        moistureChart.data.datasets[0].data = [];
+        moistureChart.update();
+        document.getElementById('send-status').textContent = '✅ History cleared!';
+        document.getElementById('send-status').className = 'send-status ok';
+      }
+    } catch(e) {
+      alert('Could not clear history: ' + e.message);
+    }
+  }
+
+  // ── Chart setup ────────────────────────────────────────────────
+  const ctx = document.getElementById('moistureChart').getContext('2d');
+  const moistureChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Moisture %',
+        data: [],
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.08)',
+        borderWidth: 2.5,
+        pointBackgroundColor: '#10b981',
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.4,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { color: '#475569', font: { size: 10 }, maxTicksLimit: 6 },
+          grid: { color: 'rgba(46,51,64,0.6)' },
+          border: { display: false }
+        },
+        y: {
+          min: 0, max: 100,
+          ticks: { color: '#475569', font: { size: 10 } },
+          grid: { color: 'rgba(46,51,64,0.6)' },
+          border: { display: false }
+        }
+      },
+      animation: { duration: 600 }
+    }
+  });
+
+  // ── Weather emoji map ──────────────────────────────────────────
+  function weatherEmoji(desc) {
+    const d = (desc || '').toLowerCase();
+    if (d.includes('thunder')) return '⛈️';
+    if (d.includes('heavy rain') || d.includes('shower')) return '🌧️';
+    if (d.includes('rain') || d.includes('drizzle')) return '🌦️';
+    if (d.includes('snow')) return '❄️';
+    if (d.includes('cloud') && d.includes('few')) return '🌤️';
+    if (d.includes('cloud') || d.includes('overcast')) return '☁️';
+    if (d.includes('mist') || d.includes('fog') || d.includes('haze')) return '🌫️';
+    if (d.includes('clear')) return '☀️';
+    return '🌡️';
+  }
+
+  function capitalise(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : str; }
+
+  function tempFeel(t) {
+    if (t < 10) return '🥶 Cold';
+    if (t < 20) return '😊 Cool';
+    if (t < 30) return '🌤️ Comfortable';
+    if (t < 38) return '🥵 Warm';
+    return '🔥 Hot';
+  }
+  function humidityLevel(h) {
+    if (h < 30) return '💨 Low humidity';
+    if (h < 60) return '✅ Comfortable';
+    return '💦 High humidity';
+  }
+  function moistureStatus(pct) {
+    if (pct < 20) return '🔴 Critical – irrigation needed';
+    if (pct < 40) return '🟡 Low – below threshold';
+    if (pct < 70) return '🟢 Good';
+    return '💧 Saturated';
+  }
+
+  // ── Main refresh ───────────────────────────────────────────────
+  async function refreshDashboard() {
+    try {
+      const res  = await fetch('/dashboard-data');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      document.getElementById('loading').style.display = 'none';
+
+      const reading  = data.latest_reading;
+      const weather  = data.weather;
+      const readings = data.recent_readings || [];
+
+      // ── Pump hero ────────────────────────────────────────────
+      if (reading) {
+        const on = reading.pump_status === 'ON';
+        const hero = document.getElementById('pump-hero');
+        hero.className = on ? 'on' : 'off';
+        document.getElementById('pump-icon').textContent       = on ? '🚿' : '💧';
+        document.getElementById('pump-status-text').textContent = on ? 'ACTIVE' : 'STANDBY';
+      }
+
+      // ── KPI: moisture ────────────────────────────────────────
+      if (reading) {
+        const pct = parseFloat(reading.soil_moisture_pct);
+        document.getElementById('moisture-val').textContent    = pct.toFixed(1);
+        document.getElementById('moisture-status').textContent = moistureStatus(pct);
+        document.getElementById('temp-val').textContent        = parseFloat(reading.temperature).toFixed(1);
+        document.getElementById('temp-feel').textContent       = tempFeel(parseFloat(reading.temperature));
+        document.getElementById('humidity-val').textContent    = parseFloat(reading.humidity).toFixed(1);
+        document.getElementById('humidity-level').textContent  = humidityLevel(parseFloat(reading.humidity));
+
+        const bar = document.getElementById('moisture-bar');
+        bar.style.width = pct + '%';
+        bar.style.background = pct < 20 ? 'linear-gradient(90deg,#ef4444,#f97316)'
+                             : pct < 40 ? 'linear-gradient(90deg,#f59e0b,#fbbf24)'
+                             : 'linear-gradient(90deg,#10b981,#6ee7b7)';
+      }
+
+      // ── KPI: weather ─────────────────────────────────────────
+      const wDesc = weather && weather.description !== 'unavailable'
+            ? weather.description : null;
+      document.getElementById('weather-icon').textContent    = wDesc ? weatherEmoji(wDesc) : '–';
+      document.getElementById('weather-desc').textContent    = wDesc ? capitalise(wDesc) : 'N/A – check API key';
+      document.getElementById('weather-temp').textContent    = weather && weather.temp_c
+            ? `🌡️ ${parseFloat(weather.temp_c).toFixed(1)}°C  💧 ${weather.humidity}% RH` : '';
+
+      // ── Decision reason ──────────────────────────────────────
+      if (data.latest_decision) {
+        document.getElementById('pump-reason-short').textContent = data.latest_decision.reason;
+      }
+
+      // ── Decision list (from recent_decisions via readings slice) ─
+      if (readings.length > 0) {
+        const items = readings.slice(0, 6).map(r => `
+          <div class="decision-item ${r.pump_status}">
+            <div class="decision-item-top">
+              <span class="decision-tag">${r.pump_status}</span>
+              <span class="decision-time">${r.timestamp.slice(11,19)}</span>
+            </div>
+            <div class="decision-reason-text">Moisture: ${parseFloat(r.soil_moisture_pct).toFixed(1)}%</div>
+          </div>
+        `).join('');
+        document.getElementById('decision-list').innerHTML = items;
+      }
+
+      // ── Chart update ─────────────────────────────────────────
+      if (readings.length > 0) {
+        const rev   = [...readings].reverse();
+        const labels = rev.map(r => r.timestamp.slice(11,19));
+        const values = rev.map(r => parseFloat(r.soil_moisture_pct).toFixed(1));
+
+        moistureChart.data.labels   = labels;
+        moistureChart.data.datasets[0].data = values;
+        moistureChart.update('none');
+      }
+
+      // ── History table ────────────────────────────────────────
+      const tbody = document.getElementById('readings-tbody');
+      if (readings.length > 0) {
+        tbody.innerHTML = readings.map(r => `
+          <tr>
+            <td>${r.timestamp}</td>
+            <td>${parseFloat(r.soil_moisture_pct).toFixed(1)}</td>
+            <td>${parseFloat(r.temperature).toFixed(1)}</td>
+            <td>${parseFloat(r.humidity).toFixed(1)}</td>
+            <td><span class="badge badge-${r.pump_status.toLowerCase()}">${r.pump_status}</span></td>
+          </tr>
+        `).join('');
+      }
+
+    } catch (err) {
+      console.error('Refresh error:', err);
+    }
+  }
+
+  refreshDashboard();
+  setInterval(refreshDashboard, 5000);
+
+  /* ══════════════════════════════════════════════════════════════
+     CLIMATE SHOWCASE – auto-cycles every 2 seconds
+  ══════════════════════════════════════════════════════════════ */
+  const CLIMATES = [
+    {
+      name:'☀️ Sunny',      label:'Sunny',      desc:'34°C · UV Index 9',
+      bg:'linear-gradient(135deg,#78350f,#b45309,#d97706)',
+      build(ov) {
+        ov.insertAdjacentHTML('beforeend','<div class="heat-shimmer"></div>');
+      }
+    },
+    {
+      name:'🌤️ Partly Cloudy', label:'Partly Cloudy', desc:'Mild breeze · 28°C · 40% cloud cover',
+      bg:'linear-gradient(135deg,#164e63,#0e7490,#155e75)',
+      build(panel) { spawnClouds(panel,4,0.15); }
+    },
+    {
+      name:'☁️ Overcast',   label:'Overcast',   desc:'Heavy clouds · 22°C · No precipitation',
+      bg:'linear-gradient(135deg,#1c1917,#292524,#44403c)',
+      build(panel) { spawnClouds(panel,8,0.28); }
+    },
+    {
+      name:'🌦️ Light Rain', label:'Light Rain', desc:'Drizzle · 19°C · 70% humidity',
+      bg:'linear-gradient(135deg,#0c1a4e,#1e3a5f,#1e40af44)',
+      build(panel) { spawnClouds(panel,5,0.22); spawnRain(panel,20,false); }
+    },
+    {
+      name:'🌧️ Heavy Rain', label:'Heavy Rain', desc:'Downpour · 16°C · 90% humidity',
+      bg:'linear-gradient(135deg,#030712,#0f172a,#1e3a5f)',
+      build(panel) { spawnClouds(panel,6,0.25); spawnRain(panel,50,false); }
+    },
+    {
+      name:'⛈️ Thunderstorm',label:'Thunderstorm',desc:'Lightning · 15°C · Severe warning',
+      bg:'linear-gradient(135deg,#0a0a0a,#1a0a2e,#0d0d0d)',
+      build(panel) { spawnClouds(panel,7,0.3); spawnRain(panel,40,false); triggerLightning(); }
+    },
+    {
+      name:'🌩️ Lightning',  label:'Lightning',  desc:'Electrical storm · 14°C · Stay indoors',
+      bg:'linear-gradient(135deg,#050510,#17004d,#050510)',
+      build(panel) { spawnRain(panel,25,false); triggerLightning(); triggerLightning(700); }
+    },
+    {
+      name:'❄️ Snow',       label:'Snow',       desc:'Snowfall · -3°C · 8 cm expected',
+      bg:'linear-gradient(135deg,#0c1520,#1e293b,#334155)',
+      build(panel) { spawnClouds(panel,4,0.2); spawnSnow(panel,30); }
+    },
+    {
+      name:'🌨️ Blizzard',  label:'Blizzard',   desc:'Whiteout · -12°C · Visibility 50m',
+      bg:'linear-gradient(135deg,#0f172a,#1e293b,#475569)',
+      build(panel) { spawnClouds(panel,8,0.35); spawnSnow(panel,70); spawnWind(panel,10); }
+    },
+    {
+      name:'🌫️ Fog',        label:'Fog',        desc:'Dense mist · 10°C · Visibility 100m',
+      bg:'linear-gradient(135deg,#111827,#1f2937,#374151)',
+      build(panel) { spawnFog(panel,6); }
+    },
+    {
+      name:'💨 Windy',      label:'Windy',      desc:'Strong gust · 24°C · 60 km/h',
+      bg:'linear-gradient(135deg,#064e3b,#065f46,#047857)',
+      build(panel) { spawnWind(panel,14); }
+    },
+    {
+      name:'🌪️ Tornado',   label:'Tornado',    desc:'Extreme wind · 20°C · DANGER',
+      bg:'linear-gradient(135deg,#1c0a00,#431407,#7c2d12)',
+      build(panel) { spawnWind(panel,22); spawnClouds(panel,5,0.22); }
+    },
+    {
+      name:'🌡️ Heatwave',  label:'Heatwave',   desc:'Extreme heat · 46°C · Heat advisory',
+      bg:'linear-gradient(135deg,#450a0a,#7f1d1d,#991b1b)',
+      build(ov) {
+        ov.insertAdjacentHTML('beforeend','<div class="heat-shimmer" style="animation-duration:0.8s"></div>');
+        ov.insertAdjacentHTML('beforeend','<div class="heat-shimmer" style="animation-delay:0.4s;opacity:0.5"></div>');
+      }
+    },
+    {
+      name:'🌈 Rainbow',    label:'Rainbow',    desc:'After rain · 23°C · Clear ahead',
+      bg:'linear-gradient(135deg,#064e3b,#065f46,#1e3a5f)',
+      build(ov) {
+        ov.insertAdjacentHTML('beforeend',`
+          <div style="position:fixed;bottom:0;left:0;right:0;height:180px;pointer-events:none;
+            background:conic-gradient(from 270deg at 50% 100%,
+              rgba(239,68,68,0.3) 0deg,rgba(249,115,22,0.25) 10deg,rgba(234,179,8,0.25) 20deg,
+              rgba(34,197,94,0.25) 30deg,rgba(59,130,246,0.25) 40deg,rgba(168,85,247,0.25) 50deg,
+              transparent 55deg);"></div>`);
+      }
+    },
+    {
+      name:'🌊 Humid & Wet',label:'Humid',     desc:'Tropical · 31°C · 95% humidity',
+      bg:'linear-gradient(135deg,#022c22,#064e3b,#065f46)',
+      build(panel) { spawnRain(panel,18,true); spawnFog(panel,2); }
+    },
+    {
+      name:'🧊 Hail',       label:'Hail Storm', desc:'Ice pellets · 5°C · Vehicle damage risk',
+      bg:'linear-gradient(135deg,#0f172a,#1e293b,#1d4ed8aa)',
+      build(panel) { spawnClouds(panel,5,0.22); spawnHail(panel,25); }
+    },
+  ];
+
+  let climateIdx = 0;
+
+  /* Clear all dynamic climate particles from the full-screen overlay */
+  function clearClimate() {
+    const ov = document.getElementById('climate-overlay');
+    ov.innerHTML = '';
+    const fl = document.getElementById('climate-flash');
+    if(fl){ fl.style.opacity='0'; }
+  }
+
+  // All spawn helpers inject into the full-screen overlay
+  function spawnClouds(ov,n,op) {
+    for(let i=0;i<n;i++){
+      const d=document.createElement('div'); d.className='cld';
+      const w=180+Math.random()*260, h=w*0.38;
+      d.style.cssText=`width:${w}px;height:${h}px;top:${Math.random()*70}vh;left:-${w}px;
+        opacity:${op+Math.random()*0.1};
+        animation-duration:${14+Math.random()*20}s;
+        animation-delay:${-Math.random()*18}s;`;
+      ov.appendChild(d);
+    }
+  }
+  function spawnRain(ov,n,green) {
+    for(let i=0;i<n;i++){
+      const d=document.createElement('div'); d.className='rain-streak';
+      d.style.cssText=`position:absolute;left:${Math.random()*100}vw;` +
+        `animation-duration:${0.4+Math.random()*0.5}s;` +
+        `animation-delay:${Math.random()*1.5}s;` +
+        (green?'background:linear-gradient(180deg,transparent,rgba(110,231,183,0.6),transparent);':'');
+      ov.appendChild(d);
+    }
+  }
+  function spawnSnow(ov,n) {
+    for(let i=0;i<n;i++){
+      const d=document.createElement('div'); d.className='snflk';
+      const sz=3+Math.random()*6;
+      d.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}vw;` +
+        `animation-duration:${3+Math.random()*5}s;animation-delay:${Math.random()*4}s;`;
+      ov.appendChild(d);
+    }
+  }
+  function spawnFog(ov,n) {
+    for(let i=0;i<n;i++){
+      const d=document.createElement('div'); d.className='fog-layer';
+      d.style.cssText=`top:${5+i*14}vh;height:${50+Math.random()*40}px;` +
+        `animation-duration:${8+Math.random()*8}s;animation-delay:${Math.random()*-5}s;`;
+      ov.appendChild(d);
+    }
+  }
+  function spawnWind(ov,n) {
+    for(let i=0;i<n;i++){
+      const d=document.createElement('div'); d.className='wind-streak';
+      d.style.cssText=`position:absolute;top:${Math.random()*100}vh;left:0;width:${120+Math.random()*200}px;` +
+        `animation-duration:${0.5+Math.random()*0.7}s;animation-delay:${Math.random()*1.5}s;`;
+      ov.appendChild(d);
+    }
+  }
+  function spawnHail(ov,n) {
+    for(let i=0;i<n;i++){
+      const d=document.createElement('div'); d.className='hail';
+      const sz=5+Math.random()*6;
+      d.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}vw;` +
+        `animation-duration:${0.4+Math.random()*0.5}s;animation-delay:${Math.random()*1.2}s;`;
+      ov.appendChild(d);
+    }
+  }
+  function triggerLightning(delay=0) {
+    const ov = document.getElementById('climate-overlay');
+    const fl = document.getElementById('climate-flash');
+    setTimeout(()=>{
+      // bolt in overlay
+      const bolt = document.createElement('div');
+      bolt.className = 'bolt';
+      bolt.textContent = '⚡';
+      bolt.style.left = (15+Math.random()*70)+'vw';
+      ov.appendChild(bolt);
+      // screen flash
+      if(fl){ fl.style.opacity='1'; setTimeout(()=>fl.style.opacity='0',120); }
+      setTimeout(()=>bolt.remove(), 800);
+    },delay);
+  }
+
+  /* Main cycle – runs every 5 seconds */
+  function runClimate() {
+    const c  = CLIMATES[climateIdx % CLIMATES.length];
+    climateIdx++;
+
+    clearClimate();
+
+    // Subtle full-screen tint
+    document.getElementById('climate-tint').style.background = c.bg;
+
+    // Update corner HUD (re-inject triggers CSS animation)
+    const hud = document.getElementById('climate-hud');
+    hud.style.animation = 'none'; hud.offsetHeight; // reflow
+    hud.style.animation = '';
+    document.getElementById('climate-hud-emoji').textContent = c.name.split(' ')[0];
+    document.getElementById('climate-hud-name').textContent  = c.label;
+    document.getElementById('climate-hud-desc').textContent  = c.desc;
+
+    const ov = document.getElementById('climate-overlay');
+    c.build(ov);
+  }
+
+  runClimate();
+  setInterval(runClimate, 5000);
+
+  /* ══════════════════════════════════════════
+     AGRICULTURE ANIMATIONS – JS
+  ══════════════════════════════════════════ */
+
+  // 1. Floating leaves / seeds background
+  const FLOATERS = ['🌿','🍃','🌱','🌾','🍀','🌻','🌼','🍂'];
+  function spawnLeaf() {
+    const el = document.createElement('div');
+    el.className = 'leaf';
+    el.textContent = FLOATERS[Math.floor(Math.random() * FLOATERS.length)];
+    el.style.left     = Math.random() * 100 + 'vw';
+    el.style.fontSize = (0.7 + Math.random() * 0.8) + 'rem';
+    el.style.animationDuration = (10 + Math.random() * 18) + 's';
+    el.style.animationDelay   = (Math.random() * 6) + 's';
+    document.body.appendChild(el);
+    el.addEventListener('animationend', () => el.remove());
+  }
+  // Spawn leaves continuously
+  setInterval(spawnLeaf, 1800);
+  for (let i = 0; i < 6; i++) setTimeout(spawnLeaf, i * 600);
+
+  // 2. Water drops – build inside pump-hero when ON
+  function setWaterDrops(on) {
+    const wrap = document.getElementById('water-drops');
+    if (on) {
+      if (wrap.children.length === 0) {
+        for (let i = 0; i < 18; i++) {
+          const d = document.createElement('div');
+          d.className = 'wdrop';
+          d.style.left              = (5 + Math.random() * 90) + '%';
+          d.style.animationDuration = (0.8 + Math.random() * 1.2) + 's';
+          d.style.animationDelay    = (Math.random() * 2) + 's';
+          wrap.appendChild(d);
+        }
+      }
+      wrap.style.display = '';
+    } else {
+      wrap.style.display = 'none';
+      wrap.innerHTML = '';
+    }
+  }
+
+  // 3. Ripple – toggle
+  function setRipple(on) {
+    const r = document.getElementById('pump-ripples');
+    if (r) r.classList.toggle('hidden', !on);
+  }
+
+  // 4. Rain streaks on weather card
+  function setRainStreaks(raining) {
+    const wrap = document.getElementById('rain-wrap');
+    if (!wrap) return;
+    if (raining) {
+      wrap.classList.remove('hidden');
+      if (wrap.children.length === 0) {
+        for (let i = 0; i < 22; i++) {
+          const s = document.createElement('div');
+          s.className = 'rain-streak';
+          s.style.left              = (Math.random() * 100) + '%';
+          s.style.animationDuration = (0.5 + Math.random() * 0.6) + 's';
+          s.style.animationDelay    = (Math.random() * 1.5) + 's';
+          wrap.appendChild(s);
+        }
+      }
+    } else {
+      wrap.classList.add('hidden');
+      wrap.innerHTML = '';
+    }
+  }
+
+  // 5. Sun visibility
+  function setSun(visible) {
+    const s = document.getElementById('sun-wrap');
+    if (s) s.style.opacity = visible ? '1' : '0';
+  }
+
+  // Hook into refreshDashboard to drive animations
+  const _origRefresh = refreshDashboard;
+  refreshDashboard = async function() {
+    await _origRefresh();
+    // Read DOM state set by _origRefresh
+    const pumpOn = document.getElementById('pump-status-text')?.textContent === 'ACTIVE';
+    setWaterDrops(pumpOn);
+    setRipple(pumpOn);
+
+    const wDesc = (document.getElementById('weather-desc')?.textContent || '').toLowerCase();
+    const isRain = wDesc.includes('rain') || wDesc.includes('drizzle') || wDesc.includes('shower');
+    const isSun  = wDesc.includes('clear') || wDesc.includes('sunny');
+    setRainStreaks(isRain);
+    setSun(!isRain);
+  };
+</script>
+</body>
+</html>

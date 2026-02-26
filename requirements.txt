@@ -1,0 +1,7 @@
+# requirements.txt
+# Python dependencies for the Smart Irrigation Flask backend
+# Install with:  pip install -r requirements.txt
+
+flask>=3.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0

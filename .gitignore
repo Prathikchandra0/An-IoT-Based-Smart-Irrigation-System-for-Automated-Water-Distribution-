@@ -1,0 +1,33 @@
+# ── Secrets ────────────────────────────────
+.env
+
+# ── Python ─────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ────────────────────
+venv/
+env/
+.venv/
+.env/
+
+# ── Database ────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Logs ────────────────────────────────────
+*.log
+
+# ── VS Code ─────────────────────────────────
+.vscode/
+
+# ── OS files ────────────────────────────────
+.DS_Store
+Thumbs.db
