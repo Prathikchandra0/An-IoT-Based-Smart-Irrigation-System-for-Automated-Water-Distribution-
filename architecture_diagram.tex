@@ -1,0 +1,59 @@
+\documentclass[tikz, border=10pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{shapes, arrows.meta, positioning, fit, backgrounds}
+
+\begin{document}
+
+\begin{tikzpicture}[
+    >=latex,
+    node distance=1.5cm and 2.5cm,
+    font=\sffamily\small,
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=1cm, align=center, fill=white},
+    group/.style={draw, dashed, rounded corners, fill=blue!5, inner sep=15pt},
+  ]
+
+  % Edge Tier (Hardware)
+  \node[box] (mcu) {NodeMCU\\(ESP8266)};
+  \node[box, below left=of mcu] (moisture) {Moisture\\Sensor};
+  \node[box, below right=of mcu] (dht) {DHT11\\Sensor};
+  \node[box, right=of mcu] (relay) {5V Relay\\ \& Pump};
+
+  % Connecting Hardware to MCU
+  \draw[->] (moisture) -- node[left] {Analog (A0)} (mcu);
+  \draw[->] (dht) -- node[right] {Digital (D4)} (mcu);
+  \draw[->] (mcu) -- node[above] {Command (D1)} (relay);
+
+  % Edge Layer Boundary definition
+  \begin{pgfonlayer}{background}
+    \node[group, fit=(mcu)(moisture)(dht)(relay), label=above:\textbf{Tier 1: Hardware Edge Layer}] (edge_tier) {};
+  \end{pgfonlayer}
+
+  % Server Tier
+  \node[box, above=2.5cm of mcu, fill=green!10, minimum width=4cm] (flask) {Flask Backend\\REST API (app.py)};
+  \node[box, left=of flask, fill=yellow!10] (db) {SQLite Database\\(irrigation.db)};
+  \node[box, right=of flask, fill=orange!10] (dash) {Web Dashboard\\(HTML/JS)};
+
+  % Connecting Server Internal
+  \draw[<->] (flask) -- node[above] {SQL queries} (db);
+  \draw[->] (flask) -- node[above] {AJAX GET} (dash);
+
+  % Server Layer Boundary
+  \begin{pgfonlayer}{background}
+    \node[group, fit=(flask)(db)(dash), label=above:\textbf{Tier 2: Central Server Layer}] (server_tier) {};
+  \end{pgfonlayer}
+
+  % Cloud Tier
+  \node[box, above=2.5cm of flask, fill=cyan!10, minimum width=3cm] (weather) {OpenWeatherMap\\REST API};
+
+  % Cloud Layer Boundary
+  \begin{pgfonlayer}{background}
+    \node[group, fit=(weather), label=above:\textbf{Tier 3: Cloud Intelligence}] (cloud_tier) {};
+  \end{pgfonlayer}
+
+  % Inter-Tier Connections
+  \draw[->, thick, color=blue] (mcu.north) -- node[right] {JSON POST (Telemetry)} (flask.south);
+  \draw[->, thick, color=blue] (flask.north) -- node[right] {HTTP GET (Forecast)} (weather.south);
+  
+\end{tikzpicture}
+
+\end{document}

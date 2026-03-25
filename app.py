@@ -109,14 +109,15 @@ def fetch_weather() -> dict:
         "error"         : None,
     }
 
-    if OPENWEATHER_API_KEY == "YOUR_OPENWEATHERMAP_API_KEY":
-        result["error"] = "API key not configured – weather check skipped."
+    api_key = (OPENWEATHER_API_KEY or "").strip()
+    if not api_key or "your_openweathermap_api_key" in api_key.lower():
+        result["error"] = "API key not configured - weather check skipped."
         logger.warning(result["error"])
         return result
 
     url = (
         f"https://api.openweathermap.org/data/2.5/weather"
-        f"?q={CITY_NAME},{COUNTRY_CODE}&appid={OPENWEATHER_API_KEY}&units=metric"
+        f"?q={CITY_NAME},{COUNTRY_CODE}&appid={api_key}&units=metric"
     )
 
     try:
